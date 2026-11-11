@@ -5,4 +5,5 @@ export const firebaseConfig = {
   storageBucket: "wall-street-investment-game.firebasestorage.app",
   messagingSenderId: "352943883143",
   appId: "1:352943883143:web:38f70a9c8b2f7518c38922"
-};export const firebaseConfigured = true;
+};
+export const firebaseConfigured = true;
