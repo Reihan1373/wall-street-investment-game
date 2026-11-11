@@ -3,6 +3,7 @@ import { getAuth } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-aut
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 import { firebaseConfig, firebaseConfigured } from './firebase-config.js';
 
+// Re-export the setup flag for both student.js and admin.js.
 export { firebaseConfigured };
 
 export const SECTORS = [
