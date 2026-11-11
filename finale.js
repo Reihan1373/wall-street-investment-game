@@ -1,12 +1,12 @@
 /*
- * Round 2 instructor-only finale. Plays the instructor-provided Podium Theme
- * from podium-theme.mp3, only when sound was explicitly enabled.
+ * Round 2 instructor-only finale. Plays the instructor-provided winner song
+ * from winner-celebration.mp3, only when sound was explicitly enabled.
  * Market A (Round 1) remains silent. No audio is sent to student devices.
  */
 import { GROUPS, LABELS, INITIAL_WEALTH, money, PCT } from './shared.js';
 
 const $ = id => document.getElementById(id);
-const MUSIC_FILE = './podium-theme.mp3';
+const MUSIC_FILE = './winner-celebration.mp3';
 let context = null;
 let soundEnabled = false;
 let audioBuffer = null;
@@ -23,7 +23,7 @@ function status(text, isError=false) {
   p.className = isError ? 'message error' : 'message';
 }
 
-function stopPodiumTheme() {
+function stopWinnerMusic() {
   if (activeSource) {
     const source = activeSource;
     activeSource = null;
@@ -36,12 +36,12 @@ function stopPodiumTheme() {
   }
 }
 
-async function loadPodiumTheme() {
+async function loadWinnerMusic() {
   if (audioBuffer) return audioBuffer;
   if (!audioLoadPromise) {
     audioLoadPromise = (async () => {
       const response = await fetch(MUSIC_FILE, {cache:'force-cache'});
-      if (!response.ok) throw new Error(`Could not load podium-theme.mp3 (HTTP ${response.status}). Check that it is in the repository root.`);
+      if (!response.ok) throw new Error(`Could not load winner-celebration.mp3 (HTTP ${response.status}). Check that it is in the repository root.`);
       const data = await response.arrayBuffer();
       return context.decodeAudioData(data);
     })();
@@ -58,8 +58,8 @@ async function loadPodiumTheme() {
 export async function setFinaleSound(enabled) {
   if (!enabled) {
     soundEnabled = false;
-    stopPodiumTheme();
-    status('Podium theme is OFF. The Round 2 animation will still play.');
+    stopWinnerMusic();
+    status('Winner music is OFF. The Round 2 animation will still play.');
     return;
   }
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -74,27 +74,27 @@ export async function setFinaleSound(enabled) {
     // Resume in response to the checkbox click so browsers allow later playback
     // after the 3-second reveal countdown.
     const resumePromise = context.resume();
-    status('Loading podium theme music on this instructor device…');
-    await Promise.all([resumePromise, loadPodiumTheme()]);
+    status('Loading winner music on this instructor device…');
+    await Promise.all([resumePromise, loadWinnerMusic()]);
     if (context.state !== 'running') throw new Error('Audio is blocked. Click the sound checkbox again.');
     soundEnabled = true;
-    status('Podium theme is ready. Music plays only when the Round 2 winner appears.');
+    status('Winner music is ready. Music plays only when the Round 2 winner appears.');
   } catch (err) {
     soundEnabled = false;
     $('finaleSoundToggle').checked = false;
-    status(err.message || 'Could not enable podium music.', true);
+    status(err.message || 'Could not enable winner music.', true);
   }
 }
 
-async function playPodiumTheme(currentSequence) {
+async function playWinnerMusic(currentSequence) {
   if (!soundEnabled || !context) return;
   try {
     if (context.state !== 'running') await context.resume();
-    const buffer = await loadPodiumTheme();
+    const buffer = await loadWinnerMusic();
     if (!soundEnabled || currentSequence !== sequence ||
         $('finaleOverlay').classList.contains('hidden') ||
         $('finaleReveal').classList.contains('hidden')) return;
-    stopPodiumTheme();
+    stopWinnerMusic();
     const source = context.createBufferSource();
     const gain = context.createGain();
     gain.gain.value = 0.7; // Moderate starting volume for classroom speakers.
@@ -113,7 +113,7 @@ async function playPodiumTheme(currentSequence) {
     };
     source.start(0);
   } catch (e) {
-    status(`Could not play podium theme: ${e.message || e}`, true);
+    status(`Could not play winner music: ${e.message || e}`, true);
   }
 }
 
@@ -168,7 +168,7 @@ function drawStandings(data) {
 export function closeFinale() {
   sequence++;
   $('finaleOverlay').classList.add('hidden');
-  stopPodiumTheme();
+  stopWinnerMusic();
   clearConfetti();
   if (previousFocus?.isConnected) previousFocus.focus();
 }
@@ -176,7 +176,7 @@ export function closeFinale() {
 export async function showFinale(data) {
   if (!drawStandings(data)) return false;
   const current=++sequence;
-  stopPodiumTheme();
+  stopWinnerMusic();
   previousFocus=document.activeElement;
   $('finaleReveal').classList.add('hidden');
   $('finaleCountdown').classList.remove('hidden');
@@ -192,7 +192,7 @@ export async function showFinale(data) {
   $('finaleCountdown').classList.add('hidden');
   $('finaleReveal').classList.remove('hidden');
   releaseConfetti();
-  void playPodiumTheme(current);
+  void playWinnerMusic(current);
   return true;
 }
 
