@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
+    }
+    function isMemberOf(groupId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.groupId == groupId;
+    }
+    function isValidWeights(w) {
+      return w is map
+        && w.keys().hasAll(['tech','energy','financials','health','discretionary','staples'])
+        && w.keys().hasOnly(['tech','energy','financials','health','discretionary','staples'])
+        && w.tech is int && w.energy is int && w.financials is int
+        && w.health is int && w.discretionary is int && w.staples is int
+        && w.tech >= 0 && w.tech <= 70 && w.tech % 5 == 0
+        && w.energy >= 0 && w.energy <= 70 && w.energy % 5 == 0
+        && w.financials >= 0 && w.financials <= 70 && w.financials % 5 == 0
+        && w.health >= 0 && w.health <= 70 && w.health % 5 == 0
+        && w.discretionary >= 0 && w.discretionary <= 70 && w.discretionary % 5 == 0
+        && w.staples >= 0 && w.staples <= 70 && w.staples % 5 == 0
+        && w.tech + w.energy + w.financials + w.health + w.discretionary + w.staples == 100;
+      // Max 70% per sector plus sum=100 ensures at least two positive sectors.
+    }
+    function activeRound() {
+      return get(/databases/$(database)/documents/games/main).data;
+    }
+
+    // Existing instructor record created manually in Firebase Console.
+    match /admins/{uid} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Hidden historical years, news prior to reveal, and future returns.
+    match /privateRounds/{id} {
+      allow read, write: if isAdmin();
+    }
+    // Join codes are deliberately NOT readable by students.
+    match /privateGroups/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /members/{uid} {
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow list: if isAdmin();
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.auth.token.firebase.sign_in_provider == 'anonymous'
+        && request.resource.data.keys().hasAll(['groupId','joinCode','joinedAt'])
+        && request.resource.data.keys().hasOnly(['groupId','joinCode','joinedAt'])
+        && request.resource.data.groupId in ['g1','g2','g3']
+        && request.resource.data.joinCode is string
+        && request.resource.data.joinCode.size() == 10
+        && request.resource.data.joinCode == get(/databases/$(database)/documents/privateGroups/$(request.resource.data.groupId)).data.joinCode
+        && request.resource.data.joinedAt == request.time;
+      allow update, delete: if false;
+    }
+    match /games/{id} {
+      allow get: if signedIn() && id == 'main';
+      allow list: if false;
+      allow create, update, delete: if isAdmin();
+    }
+    match /leaderboard/{id} {
+      allow get: if signedIn() && id == 'main';
+      allow list: if false;
+      allow create, update, delete: if isAdmin();
+    }
+    match /submissions/{id} {
+      // Read by known document ID even before a submission exists.
+      // Never use resource.data in this condition: that would deny reads of missing docs.
+      allow get: if isAdmin() || (signedIn() &&
+        exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
+        (id == ('r1_' + get(/databases/$(database)/documents/members/$(request.auth.uid)).data.groupId)
+          || id == ('r2_' + get(/databases/$(database)/documents/members/$(request.auth.uid)).data.groupId)));
+      allow list: if isAdmin();
+      allow create: if signedIn()
+        && request.auth.token.firebase.sign_in_provider == 'anonymous'
+        && request.resource.data.keys().hasAll(['groupId','round','weights','createdAt'])
+        && request.resource.data.keys().hasOnly(['groupId','round','weights','createdAt'])
+        && request.resource.data.groupId in ['g1','g2','g3']
+        && isMemberOf(request.resource.data.groupId)
+        && request.resource.data.round is int
+        && request.resource.data.round in [1,2]
+        && id == ('r' + (request.resource.data.round == 1 ? '1' : '2') + '_' + request.resource.data.groupId)
+        && activeRound().phase == 'open'
+        && activeRound().round == request.resource.data.round
+        && activeRound().openedAt is timestamp
+        && request.time >= activeRound().openedAt
+        && request.time < activeRound().openedAt + duration.value(10, 'm')
+        && request.resource.data.createdAt == request.time
+        && isValidWeights(request.resource.data.weights);
+      // A submitted portfolio is locked. Students cannot edit or delete it.
+      allow update, delete: if isAdmin();
+    }
+    // Deny everything else.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

@@ -1,0 +1,52 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blind Wall Street Challenge — Instructor</title><link rel="stylesheet" href="style.css"></head><body>
+<header class="topbar"><div class="brand"><span class="brandmark">W</span><span>WALL STREET <small>INSTRUCTOR CONTROL</small></span></div><a class="navlink" href="./">Student portal</a></header>
+<main class="container"><section class="hero"><p class="kicker">PRIVATE INSTRUCTOR CONTROLS</p><h1>Run the historical<br><em>investment championship.</em></h1>
+<p>Actual years and sector returns stay in admin-only Firestore documents until you reveal them.</p></section>
+<div id="setupWarning" class="notice hidden">Configure <code>firebase-config.js</code> first.</div>
+<section class="panel" id="loginPanel"><h2>Instructor sign in</h2><div class="join-grid"><label>Email<input id="adminEmail" type="email" autocomplete="username" placeholder="Your Firebase instructor email"></label>
+<label>Password<input id="adminPassword" type="password" autocomplete="current-password"></label><button id="loginBtn" class="primary" disabled>Sign in</button></div><p id="loginMessage" class="message">Sign in with the Email/Password account registered in Firebase.</p></section>
+<section id="controls" class="hidden">
+ <div class="statline"><div><span class="overline">GAME STATUS</span><strong id="phaseText">—</strong></div><div><span class="overline">MARKET</span><strong id="roundText">—</strong></div><div><span class="overline">TIME LEFT</span><strong class="clock" id="adminClock">—</strong></div><div><span class="overline">TEAMS</span><strong>3</strong></div></div>
+ <section class="panel" id="setupPanel"><div class="panel-head"><h2>Initialize two hidden historical markets</h2><span class="tag">ADMIN ONLY</span></div>
+ <p class="notice">Do not put real years, future events, returns, group codes, or answer keys into public GitHub files. Enter them here instead. These values are stored in admin-only Firestore documents.</p>
+ <div id="roundEditors"></div>
+ <button id="initBtn" class="primary">Initialize / reset game and generate new codes</button>
+ <p id="initMessage" class="message">Initialization replaces the game and deletes existing submissions and scores. Do it before the class begins.</p></section>
+ <section class="panel"><div class="panel-head"><h2>Group join codes</h2><span class="subtle">Show each code only to its own captain</span></div><div id="codes" class="codes">Initialize the game to generate private group codes.</div></section>
+ <section class="panel"><div class="panel-head"><h2>Round controls</h2><span class="subtle">Exactly 10 minutes per investment round</span></div>
+  <div class="control-row"><button class="primary" id="open1Btn">Open Market A (10 min)</button><button class="primary" id="reveal1Btn">Reveal Market A results</button>
+  <button class="primary" id="open2Btn">Open Market B (10 min)</button><button class="primary" id="reveal2Btn">Reveal final results</button></div>
+  <p id="controlMessage" class="message">Initialize the game first. Reveal buttons become available after the 10-minute server deadline.</p>
+  <p class="muted tiny">A market's ten-minute window begins when you click Open. After the deadline, the instructor must click Reveal to publish results.</p>
+  <div class="finale-settings">
+   <label class="sound-opt-in"><input id="finaleSoundToggle" type="checkbox"> <span>Enable original victory fanfare on this instructor device</span></label>
+   <button class="secondary" id="replayFinaleBtn" disabled>Replay Round 2 Winner Celebration</button>
+   <p id="finaleSoundMessage" class="message">Sound is off until you enable it. Only Round 2 triggers a celebration.</p>
+  </div>
+ </section>
+ <section class="panel"><h2>Team submissions and results</h2><div id="adminSubmissions">No submissions yet.</div><div id="adminScores"></div></section>
+ <button id="logoutBtn" class="secondary">Sign out</button>
+</section>
+</main>
+<div id="finaleOverlay" class="finale-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="finaleTitle">
+ <div id="finaleConfetti" class="finale-confetti" aria-hidden="true"></div>
+ <div class="finale-stage">
+  <button id="finaleClose" class="secondary finale-close">Close celebration</button>
+  <div id="finaleCountdown" class="finale-countdown" aria-live="polite">3</div>
+  <section id="finaleReveal" class="hidden" aria-live="polite">
+   <p class="kicker">WALL STREET INVESTMENT CHAMPIONSHIP</p>
+   <div class="finale-cup" aria-hidden="true">🏆</div>
+   <h2 id="finaleTitle">Final Champion</h2>
+   <div id="finaleChampionValue" class="finale-wealth">—</div>
+   <p id="finaleChampionReturn" class="finale-caption">—</p>
+   <div class="finale-table-scroll"><table class="leaderboard-table finale-table">
+    <thead><tr><th>Rank</th><th>Team</th><th>Round 2 P/L</th><th>Final wealth</th><th>2-round return</th></tr></thead>
+    <tbody id="finaleRankRows"></tbody></table></div>
+   <p class="muted tiny">Based on the historical returns of both revealed markets. Sound plays only here if enabled.</p>
+  </section>
+ </div>
+</div>
+<footer class="footer">Instructor access is checked against Firestore <code>admins/{uid}</code>.</footer>
+<script type="module" src="admin.js"></script>
+</body></html>
