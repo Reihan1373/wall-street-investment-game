@@ -1,13 +1,18 @@
 /*
- * Round 2 instructor-only finale.
- * All sounds are synthesized from an original short fanfare; no third-party music files.
- * The page never plays audio or shows this celebration for Round 1.
+ * Round 2 instructor-only finale. Plays the instructor-provided Podium Theme
+ * from podium-theme.mp3, only when sound was explicitly enabled.
+ * Market A (Round 1) remains silent. No audio is sent to student devices.
  */
 import { GROUPS, LABELS, INITIAL_WEALTH, money, PCT } from './shared.js';
 
 const $ = id => document.getElementById(id);
+const MUSIC_FILE = './podium-theme.mp3';
 let context = null;
 let soundEnabled = false;
+let audioBuffer = null;
+let audioLoadPromise = null;
+let activeSource = null;
+let activeGain = null;
 let sequence = 0;
 let previousFocus = null;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -18,54 +23,97 @@ function status(text, isError=false) {
   p.className = isError ? 'message error' : 'message';
 }
 
+function stopPodiumTheme() {
+  if (activeSource) {
+    const source = activeSource;
+    activeSource = null;
+    try { source.stop(); } catch (_) { /* May have ended already. */ }
+    source.disconnect();
+  }
+  if (activeGain) {
+    activeGain.disconnect();
+    activeGain = null;
+  }
+}
+
+async function loadPodiumTheme() {
+  if (audioBuffer) return audioBuffer;
+  if (!audioLoadPromise) {
+    audioLoadPromise = (async () => {
+      const response = await fetch(MUSIC_FILE, {cache:'force-cache'});
+      if (!response.ok) throw new Error(`Could not load podium-theme.mp3 (HTTP ${response.status}). Check that it is in the repository root.`);
+      const data = await response.arrayBuffer();
+      return context.decodeAudioData(data);
+    })();
+  }
+  try {
+    audioBuffer = await audioLoadPromise;
+    return audioBuffer;
+  } catch (e) {
+    audioLoadPromise = null;
+    throw e;
+  }
+}
+
 export async function setFinaleSound(enabled) {
   if (!enabled) {
     soundEnabled = false;
-    status('Victory sound is OFF. The Round 2 animation will still play.');
+    stopPodiumTheme();
+    status('Podium theme is OFF. The Round 2 animation will still play.');
     return;
   }
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) {
     soundEnabled = false;
     $('finaleSoundToggle').checked = false;
-    status('This browser does not support Web Audio. The visual celebration will still work.', true);
+    status('Audio playback is unsupported in this browser.', true);
     return;
   }
   try {
     context ||= new AudioContextClass();
-    await context.resume();
-    soundEnabled = context.state === 'running';
-    if (!soundEnabled) throw new Error('Sound is blocked in this browser. Click Replay after enabling sound.');
-    status('Victory sound is ON for the instructor computer only.');
+    // Resume in response to the checkbox click so browsers allow later playback
+    // after the 3-second reveal countdown.
+    const resumePromise = context.resume();
+    status('Loading podium theme music on this instructor device…');
+    await Promise.all([resumePromise, loadPodiumTheme()]);
+    if (context.state !== 'running') throw new Error('Audio is blocked. Click the sound checkbox again.');
+    soundEnabled = true;
+    status('Podium theme is ready. Music plays only when the Round 2 winner appears.');
   } catch (err) {
     soundEnabled = false;
     $('finaleSoundToggle').checked = false;
-    status(err.message || 'Could not enable audio.', true);
+    status(err.message || 'Could not enable podium music.', true);
   }
 }
 
-// Purpose-composed, royalty-free fanfare. A brief rising theme followed by a cadence.
-function playOriginalFanfare() {
-  if (!soundEnabled || !context || context.state !== 'running') return;
-  const t = context.currentTime + 0.05;
-  const melody = [
-    [0.00, 392.00, .18], [.23, 493.88, .18], [.46, 587.33, .22],
-    [.73, 784.00, .32], [1.12, 587.33, .16], [1.34, 659.25, .16],
-    [1.56, 783.99, .28], [1.93, 987.77, .23], [2.24, 880.00, .18],
-    [2.50, 1046.50, .70]
-  ];
-  for (const [offset, frequency, duration] of melody) {
-    const osc = context.createOscillator();
-    const envelope = context.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(frequency, t + offset);
-    envelope.gain.setValueAtTime(0.0001, t + offset);
-    envelope.gain.exponentialRampToValueAtTime(.12, t + offset + .025);
-    envelope.gain.exponentialRampToValueAtTime(0.0001, t + offset + duration);
-    osc.connect(envelope);
-    envelope.connect(context.destination);
-    osc.start(t + offset);
-    osc.stop(t + offset + duration + .03);
+async function playPodiumTheme(currentSequence) {
+  if (!soundEnabled || !context) return;
+  try {
+    if (context.state !== 'running') await context.resume();
+    const buffer = await loadPodiumTheme();
+    if (!soundEnabled || currentSequence !== sequence ||
+        $('finaleOverlay').classList.contains('hidden') ||
+        $('finaleReveal').classList.contains('hidden')) return;
+    stopPodiumTheme();
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    gain.gain.value = 0.7; // Moderate starting volume for classroom speakers.
+    source.buffer = buffer;
+    source.connect(gain);
+    gain.connect(context.destination);
+    activeSource = source;
+    activeGain = gain;
+    source.onended = () => {
+      if (activeSource === source) {
+        activeSource = null;
+        activeGain = null;
+        source.disconnect();
+        gain.disconnect();
+      }
+    };
+    source.start(0);
+  } catch (e) {
+    status(`Could not play podium theme: ${e.message || e}`, true);
   }
 }
 
@@ -120,6 +168,7 @@ function drawStandings(data) {
 export function closeFinale() {
   sequence++;
   $('finaleOverlay').classList.add('hidden');
+  stopPodiumTheme();
   clearConfetti();
   if (previousFocus?.isConnected) previousFocus.focus();
 }
@@ -127,6 +176,7 @@ export function closeFinale() {
 export async function showFinale(data) {
   if (!drawStandings(data)) return false;
   const current=++sequence;
+  stopPodiumTheme();
   previousFocus=document.activeElement;
   $('finaleReveal').classList.add('hidden');
   $('finaleCountdown').classList.remove('hidden');
@@ -142,7 +192,7 @@ export async function showFinale(data) {
   $('finaleCountdown').classList.add('hidden');
   $('finaleReveal').classList.remove('hidden');
   releaseConfetti();
-  playOriginalFanfare();
+  void playPodiumTheme(current);
   return true;
 }
 
