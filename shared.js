@@ -3,6 +3,8 @@ import { getAuth } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-aut
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 import { firebaseConfig, firebaseConfigured } from './firebase-config.js';
 
+export { firebaseConfigured };
+
 export const SECTORS = [
   {key:'tech', name:'Information Technology', ticker:'XLK', note:'Software, hardware & semiconductors'},
   {key:'energy', name:'Energy', ticker:'XLE', note:'Oil, gas & energy producers'},
