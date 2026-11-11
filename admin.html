@@ -17,11 +17,11 @@
   <p id="initMessage" class="message">Once imported, initialize to create the three group codes. Reset erases previous submissions and scores.</p>
  </section>
  <section class="panel"><div class="panel-head"><h2>Group join codes</h2><span class="subtle">Show each code only to its own captain</span></div><div id="codes" class="codes">Initialize the game to generate private group codes.</div></section>
- <section class="panel"><div class="panel-head"><h2>Round controls</h2><span class="subtle">Exactly 10 minutes per investment round</span></div>
+ <section class="panel"><div class="panel-head"><h2>Round controls</h2><span class="subtle">Up to 10 minutes per investment round</span></div>
   <div class="control-row"><button class="primary" id="open1Btn">Open Market A (10 min)</button><button class="primary" id="reveal1Btn">Reveal Market A results</button>
   <button class="primary" id="open2Btn">Open Market B (10 min)</button><button class="primary" id="reveal2Btn">Reveal final results</button></div>
-  <p id="controlMessage" class="message">Initialize the game first. Reveal buttons become available after the 10-minute server deadline.</p>
-  <p class="muted tiny">A market's ten-minute window begins when you click Open. After the deadline, the instructor must click Reveal to publish results.</p>
+  <p id="controlMessage" class="message">Initialize the game first. Reveal buttons unlock once all 3 groups submit, or the 10-minute deadline expires.</p>
+  <p class="muted tiny">The timer starts when you click Open. If all three groups submit early, Reveal becomes available immediately. Otherwise, it unlocks at 10:00, and missing groups receive equal weighting. You still control when results are published.</p>
   <div class="finale-settings">
    <label class="sound-opt-in"><input id="finaleSoundToggle" type="checkbox"> <span>Enable original victory fanfare on this instructor device</span></label>
    <button class="secondary" id="replayFinaleBtn" disabled>Replay Round 2 Winner Celebration</button>

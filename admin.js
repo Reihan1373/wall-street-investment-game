@@ -5,6 +5,12 @@ import { attachFinaleControls, showFinale, closeFinale } from './finale.js';
 
 const $=id=>document.getElementById(id);
 let game=null,board=null,unsubGame=()=>{},unsubBoard=()=>{};
+// Watch each group's locked submission in real time so the instructor need not
+// wait for the full deadline once all three portfolios are in.
+let watchedSubmissionRound=null;
+let submissionPresent={};
+let unsubSubmissions=[];
+let revealInProgress=false;
 const gameRef=()=>doc(db,'games','main');
 const boardRef=()=>doc(db,'leaderboard','main');
 const roundRef=n=>doc(db,'privateRounds',`r${n}`);
@@ -101,17 +107,23 @@ async function initialize(){
     showMessage($('initMessage'),'Game initialized. Share each group code privately, then open Market A.');
   }catch(e){showMessage($('initMessage'),errorMessage(e),true);}finally{$('initBtn').disabled=false;}
 }
-function deadlinePassed(){
-  return game?.phase==='open' && game?.openedAt?.toMillis && Date.now()>=game.openedAt.toMillis()+ROUND_SECONDS*1000;
+function deadlinePassed(state=game){
+  return state?.phase==='open' && !!state?.openedAt?.toMillis && Date.now()>=state.openedAt.toMillis()+ROUND_SECONDS*1000;
+}
+function allGroupsSubmitted(){
+  return game?.round===watchedSubmissionRound && GROUPS.every(g=>submissionPresent[g]===true);
+}
+function canReveal(n){
+  return game?.phase==='open' && game?.round===n && (allGroupsSubmitted() || deadlinePassed());
 }
 function updateButtons(){
   $('phaseText').textContent=({lobby:'Ready',open:'Investment open',revealed:'Round 1 revealed',finished:'Completed'})[game?.phase]||'Uninitialized';
   $('roundText').textContent=game?.round?`Market ${game.round===1?'A':'B'}`:'—';
   $('adminClock').textContent=game?.phase==='open' && game.openedAt?.toMillis ? formatCountdown((game.openedAt.toMillis()+ROUND_SECONDS*1000-Date.now())/1000) : '—';
   $('open1Btn').disabled=!(game?.phase==='lobby');
-  $('reveal1Btn').disabled=!(game?.phase==='open'&&game.round===1&&deadlinePassed());
+  $('reveal1Btn').disabled=revealInProgress || !canReveal(1);
   $('open2Btn').disabled=!(game?.phase==='revealed'&&game.round===1);
-  $('reveal2Btn').disabled=!(game?.phase==='open'&&game.round===2&&deadlinePassed());
+  $('reveal2Btn').disabled=revealInProgress || !canReveal(2);
   $('replayFinaleBtn').disabled=!(game?.phase==='finished' && board?.rounds?.some(r=>r.round===2));
 }
 async function openMarket(n){
@@ -120,13 +132,17 @@ async function openMarket(n){
     const privateDoc=await getDoc(roundRef(n));
     if(!privateDoc.exists())throw new Error(`No private market ${n} configuration exists.`);
     await updateDoc(gameRef(),{phase:'open',round:n,briefing:privateDoc.data().briefing,openedAt:serverTimestamp(),updatedAt:serverTimestamp()});
-    showMessage($('controlMessage'),`Market ${n===1?'A':'B'} is open. Submissions are accepted for 10 minutes (server-enforced).`);
+    showMessage($('controlMessage'),`Market ${n===1?'A':'B'} is open. Reveal results after all three groups submit, or when the 10-minute deadline expires.`);
   }catch(e){showMessage($('controlMessage'),errorMessage(e),true);}
 }
 async function revealMarket(n){
-  if(!deadlinePassed()||game?.round!==n){showMessage($('controlMessage'),'Wait for the full ten-minute investment window to finish.',true);return;}
+  if(revealInProgress || !canReveal(n)){
+    showMessage($('controlMessage'),'Reveal becomes available when all three groups have submitted, or when the 10-minute deadline expires.',true);
+    return;
+  }
   if(!confirm(`Reveal the ACTUAL historical year, sector returns, and ${n===1?'Round 1':'final'} results to all students?`))return;
-  const button=$(n===1?'reveal1Btn':'reveal2Btn');button.disabled=true;
+  revealInProgress=true;
+  updateButtons();
   try{
     await runTransaction(db,async tx=>{
       // All reads must precede writes in Firestore transactions.
@@ -137,7 +153,14 @@ async function revealMarket(n){
       if(!stateSnap.exists()||!boardSnap.exists()||!secretSnap.exists())throw new Error('Game is not initialized.');
       const state=stateSnap.data(),prior=boardSnap.data();
       if(state.phase!=='open'||state.round!==n)throw new Error('This market is no longer open.');
-      if(!state.openedAt?.toMillis||Date.now()<state.openedAt.toMillis()+ROUND_SECONDS*1000)throw new Error('Investment window is still open.');
+      // Verify the actual saved submissions INSIDE the transaction. The early-reveal
+      // path requires every group; missing submissions receive equal weights only
+      // if the full deadline has passed.
+      const submittedAll=all.every(snapshot=>snapshot.exists());
+      const timedOut=!!state.openedAt?.toMillis && Date.now()>=state.openedAt.toMillis()+ROUND_SECONDS*1000;
+      if(!state.openedAt?.toMillis || (!submittedAll && !timedOut)){
+        throw new Error('Cannot reveal yet: wait for all three groups or the ten-minute deadline.');
+      }
       if((prior.rounds||[]).some(r=>r.round===n))throw new Error('This round has already been revealed.');
       const secret=secretSnap.data();const wealth={...prior.wealth};
       const results=GROUPS.map((g,i)=>{
@@ -160,7 +183,7 @@ async function revealMarket(n){
       const freshBoard=await getDoc(boardRef());
       if(freshBoard.exists()) void showFinale(freshBoard.data());
     }
-  }catch(e){showMessage($('controlMessage'),errorMessage(e),true);}finally{updateButtons();}
+  }catch(e){showMessage($('controlMessage'),errorMessage(e),true);}finally{revealInProgress=false;updateButtons();}
 }
 function renderScores(){
   const zone=$('adminScores');zone.replaceChildren();
@@ -172,20 +195,54 @@ function renderScores(){
     const tr=document.createElement('tr');[LABELS[g],money(w),PCT((w/INITIAL_WEALTH-1)*100)].forEach(v=>{const c=document.createElement('td');c.textContent=v;tr.appendChild(c);});tbody.appendChild(tr);
   });t.appendChild(tbody);zone.appendChild(t);
 }
-async function refreshSubmissions(){
+function renderSubmissionStatus(){
   const zone=$('adminSubmissions');
   if(!game?.round){zone.textContent='No round opened yet.';return;}
-  const parts=[];
-  for(const g of GROUPS){
-    try{const snap=await getDoc(submissionRef(game.round,g));parts.push(`${LABELS[g]}: ${snap.exists()?'Submitted / locked':'Not submitted (equal-weight fallback at deadline)'}`);}
-    catch(e){parts.push(`${LABELS[g]}: ${errorMessage(e)}`);}
+  const readyCount=GROUPS.filter(g=>submissionPresent[g]===true).length;
+  const parts=GROUPS.map(g=>`${LABELS[g]}: ${submissionPresent[g]===true?'Submitted / locked':submissionPresent[g]===false?'Not submitted':'Checking…'}`);
+  if(game?.phase==='open'){
+    const status=allGroupsSubmitted()
+      ? 'All 3 groups submitted — ready to reveal results now.'
+      : deadlinePassed()
+        ? `${readyCount}/3 groups submitted. Deadline expired; missing groups will receive equal weights.`
+        : `${readyCount}/3 groups submitted. Reveal unlocks when all 3 submit, or when time runs out.`;
+    zone.textContent=`${parts.join(' | ')}. ${status}`;
+  }else{
+    zone.textContent=parts.join(' | ');
   }
-  zone.textContent=parts.join(' | ');
+}
+function watchSubmissionsForRound(n){
+  for(const stop of unsubSubmissions)stop();
+  unsubSubmissions=[];
+  watchedSubmissionRound=n;
+  submissionPresent={};
+  renderSubmissionStatus();
+  updateButtons();
+  if(!n)return;
+  for(const g of GROUPS){
+    const stop=onSnapshot(submissionRef(n,g),snap=>{
+      submissionPresent[g]=snap.exists();
+      renderSubmissionStatus();
+      updateButtons();
+    },err=>{
+      submissionPresent[g]=null;
+      showMessage($('controlMessage'),`Cannot check ${LABELS[g]} submission: ${errorMessage(err)}`,true);
+      renderSubmissionStatus();
+      updateButtons();
+    });
+    unsubSubmissions.push(stop);
+  }
 }
 function enterAdmin(){
   $('loginPanel').classList.add('hidden');$('controls').classList.remove('hidden');
   loadCodes();
-  unsubGame=onSnapshot(gameRef(),s=>{game=s.exists()?s.data():null;updateButtons();refreshSubmissions();},e=>showMessage($('controlMessage'),errorMessage(e),true));
+  unsubGame=onSnapshot(gameRef(),s=>{
+    game=s.exists()?s.data():null;
+    const nextRound=game?.round||null;
+    if(nextRound!==watchedSubmissionRound)watchSubmissionsForRound(nextRound);
+    renderSubmissionStatus();
+    updateButtons();
+  },e=>showMessage($('controlMessage'),errorMessage(e),true));
   unsubBoard=onSnapshot(boardRef(),s=>{board=s.exists()?s.data():null;renderScores();updateButtons();},e=>showMessage($('controlMessage'),errorMessage(e),true));
 }
 async function login(){
@@ -206,10 +263,10 @@ $('replayFinaleBtn').addEventListener('click',async()=>{
 attachFinaleControls();
 $('privateJsonFile').addEventListener('change', event => loadPrivateFile(event.target.files?.[0]));
 $('initBtn').disabled = true;
-setInterval(updateButtons,1000);setInterval(()=>{if(game?.phase==='open')refreshSubmissions();},9000);
+setInterval(()=>{updateButtons();if(game?.phase==='open')renderSubmissionStatus();},1000);
 if(!firebaseConfigured){$('setupWarning').classList.remove('hidden');showMessage($('loginMessage'),'Firebase configuration is missing.',true);}
 else onAuthStateChanged(auth,async user=>{
-  unsubGame();unsubBoard();game=null;board=null;
+  unsubGame();unsubBoard();for(const stop of unsubSubmissions)stop();unsubSubmissions=[];watchedSubmissionRound=null;submissionPresent={};game=null;board=null;
   if(!user){privateMarkets=null;$('privateJsonFile').value='';$('initBtn').disabled=true;showMessage($('privateJsonStatus'),'Choose the instructor-only JSON file from your computer.');$('loginPanel').classList.remove('hidden');$('controls').classList.add('hidden');$('loginBtn').disabled=false;return;}
   try{const snap=await getDoc(doc(db,'admins',user.uid));
     if(!snap.exists()||snap.data().role!=='admin')throw new Error('This user is not registered as an instructor in admins/{uid}.');
