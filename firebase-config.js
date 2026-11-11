@@ -1,6 +1,6 @@
 // Firebase Web SDK configuration (public project identifiers).
 // Do not place private service-account keys or administrator passwords here.
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyCa5Dhz0oSO0AYru__cJcDGKagrISsYcss",
   authDomain: "wall-street-investment-game.firebaseapp.com",
   projectId: "wall-street-investment-game",
@@ -11,5 +11,3 @@ const firebaseConfig = {
 
 // shared.js imports both named exports.
 export const firebaseConfigured = true;
-Boolean(firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('REPLACE_')) &&
-  Boolean(firebaseConfig.projectId && !firebaseConfig.projectId.startsWith('REPLACE_'));
