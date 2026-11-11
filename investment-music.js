@@ -15,6 +15,9 @@ let soundEnabled = false;
 let requestNumber = 0;
 let activeSource = null;
 let activeGain = null;
+let previewSource = null;
+let previewGain = null;
+let previewRequested = false;
 let state = { phase: 'lobby', round: null, submitted: false, expired: false };
 let toggle = null;
 let message = null;
@@ -27,6 +30,18 @@ function report(text, isError = false) {
   message.className = isError ? 'message error' : 'message';
 }
 
+function stopPreview() {
+  if (previewSource) {
+    const source = previewSource;
+    previewSource = null;
+    try { source.stop(); } catch (_) { /* May already be ended. */ }
+    try { source.disconnect(); } catch (_) { /* May already be disconnected. */ }
+  }
+  if (previewGain) {
+    try { previewGain.disconnect(); } catch (_) { /* May already be disconnected. */ }
+    previewGain = null;
+  }
+}
 function stopTrack() {
   const source = activeSource;
   activeSource = null;
@@ -64,9 +79,47 @@ async function loadTrack() {
   }
 }
 
+async function testSound() {
+  // Explicit click ensures that browsers permit the preview sound.
+  try {
+    if (investmentIsActive()) {
+      report('A market is open. Background music will play automatically while teams invest.');
+      return;
+    }
+    if (!soundEnabled) {
+      toggle.checked = true;
+      await setEnabled(true);
+    }
+    if (!soundEnabled || !context || !buffer) return;
+    if (context.state !== 'running') await context.resume();
+    stopPreview();
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    gain.gain.value = TRACK_VOLUME;
+    source.connect(gain);
+    gain.connect(context.destination);
+    previewSource = source;
+    previewGain = gain;
+    source.onended = () => {
+      if (previewSource !== source) return;
+      previewSource = null;
+      previewGain = null;
+      source.disconnect();
+      gain.disconnect();
+      report('Music test completed. It is enabled for both investment rounds.');
+    };
+    source.start(0);
+    source.stop(context.currentTime + 3);
+    report('Playing a 3-second sound test. You should hear music from this computer.');
+  } catch(e) {
+    report(`Music test failed: ${e.message || e}`, true);
+  }
+}
 function playIfNeeded() {
   if (!soundEnabled) {
     stopTrack();
+    stopPreview();
     report('Background music is off. Enable it before opening either market.');
     return;
   }
@@ -86,6 +139,7 @@ function playIfNeeded() {
     return;
   }
   if (!activeSource) {
+    stopPreview();
     try {
       const source = context.createBufferSource();
       const gain = context.createGain();
@@ -119,6 +173,7 @@ async function setEnabled(checked) {
   if (!checked) {
     soundEnabled = false;
     stopTrack();
+    stopPreview();
     report('Background music is off. Enable it before opening either market.');
     return;
   }
@@ -158,6 +213,7 @@ export function attachInvestmentMusicControls() {
       <input type="checkbox" id="investmentMusicToggle">
       <span>Enable background music during BOTH investment rounds (instructor only)</span>
     </label>
+    <button type="button" class="secondary" id="investmentMusicTestBtn">Test sound (3 seconds)</button>
     <p id="investmentMusicMessage" class="message" role="status">
       Background music is off. Enable it before opening either market.
     </p>
@@ -168,6 +224,7 @@ export function attachInvestmentMusicControls() {
   toggle = document.getElementById('investmentMusicToggle');
   message = document.getElementById('investmentMusicMessage');
   toggle?.addEventListener('change', () => { void setEnabled(toggle.checked); });
+  document.getElementById('investmentMusicTestBtn')?.addEventListener('click', () => { void testSound(); });
 }
 
 // Called by the instructor dashboard's existing Firestore listeners and timer.
