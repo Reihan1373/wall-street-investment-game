@@ -2,6 +2,7 @@ import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https:/
 import { doc,getDoc,setDoc,writeBatch,serverTimestamp,onSnapshot,updateDoc,runTransaction } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 import { auth,db,firebaseConfigured,SECTORS,GROUPS,LABELS,INITIAL_WEALTH,ROUND_SECONDS,formatCountdown,errorMessage,showMessage,money,PCT } from './shared.js';
 import { attachFinaleControls, showFinale, closeFinale } from './finale.js';
+import { attachInvestmentMusicControls, syncInvestmentMusic } from './investment-music.js';
 
 const $=id=>document.getElementById(id);
 let game=null,board=null,unsubGame=()=>{},unsubBoard=()=>{};
@@ -125,6 +126,7 @@ function updateButtons(){
   $('open2Btn').disabled=!(game?.phase==='revealed'&&game.round===1);
   $('reveal2Btn').disabled=revealInProgress || !canReveal(2);
   $('replayFinaleBtn').disabled=!(game?.phase==='finished' && board?.rounds?.some(r=>r.round===2));
+  syncInvestmentMusic({phase:game?.phase,round:game?.round,submitted:allGroupsSubmitted(),expired:deadlinePassed()});
 }
 async function openMarket(n){
   try{
@@ -254,19 +256,21 @@ $('loginBtn').addEventListener('click',login);
 $('initBtn').addEventListener('click',initialize);
 $('open1Btn').addEventListener('click',()=>openMarket(1));$('open2Btn').addEventListener('click',()=>openMarket(2));
 $('reveal1Btn').addEventListener('click',()=>revealMarket(1));$('reveal2Btn').addEventListener('click',()=>revealMarket(2));
-$('logoutBtn').addEventListener('click',()=>{closeFinale();return signOut(auth);});
+$('logoutBtn').addEventListener('click',()=>{closeFinale();syncInvestmentMusic({phase:'lobby'});return signOut(auth);});
 $('replayFinaleBtn').addEventListener('click',async()=>{
   try{const snap=await getDoc(boardRef());if(!snap.exists()||!snap.data().rounds?.some(r=>r.round===2))throw new Error('Final results have not been revealed.');
     void showFinale(snap.data());
   }catch(e){showMessage($('controlMessage'),errorMessage(e),true);}
 });
 attachFinaleControls();
+attachInvestmentMusicControls();
 $('privateJsonFile').addEventListener('change', event => loadPrivateFile(event.target.files?.[0]));
 $('initBtn').disabled = true;
 setInterval(()=>{updateButtons();if(game?.phase==='open')renderSubmissionStatus();},1000);
 if(!firebaseConfigured){$('setupWarning').classList.remove('hidden');showMessage($('loginMessage'),'Firebase configuration is missing.',true);}
 else onAuthStateChanged(auth,async user=>{
   unsubGame();unsubBoard();for(const stop of unsubSubmissions)stop();unsubSubmissions=[];watchedSubmissionRound=null;submissionPresent={};game=null;board=null;
+  syncInvestmentMusic({phase:'lobby'});
   if(!user){privateMarkets=null;$('privateJsonFile').value='';$('initBtn').disabled=true;showMessage($('privateJsonStatus'),'Choose the instructor-only JSON file from your computer.');$('loginPanel').classList.remove('hidden');$('controls').classList.add('hidden');$('loginBtn').disabled=false;return;}
   try{const snap=await getDoc(doc(db,'admins',user.uid));
     if(!snap.exists()||snap.data().role!=='admin')throw new Error('This user is not registered as an instructor in admins/{uid}.');
