@@ -11,36 +11,61 @@ const roundRef=n=>doc(db,'privateRounds',`r${n}`);
 const codeRef=g=>doc(db,'privateGroups',g);
 const submissionRef=(n,g)=>doc(db,'submissions',`r${n}_${g}`);
 
-function renderEditors(){
-  $('roundEditors').replaceChildren();
-  for(let n=1;n<=2;n++){
-    const box=document.createElement('div');box.className='editor';
-    const h=document.createElement('h3');h.textContent=`Market ${n===1?'A':'B'} — private instructor data`;box.appendChild(h);
-    const fields=document.createElement('div');fields.className='editor-fields';
-    const yearLabel=document.createElement('label');yearLabel.textContent='Real historical year (hidden)';
-    const year=document.createElement('input');year.type='number';year.min='1998';year.max='2025';year.step='1';year.placeholder='Year';year.id=`year${n}`;yearLabel.appendChild(year);
-    const briefLabel=document.createElement('label');briefLabel.textContent='Student-facing economic briefing (no dates or future events)';
-    const brief=document.createElement('textarea');brief.id=`brief${n}`;brief.placeholder='Paste anonymized, contemporaneous information available before the investment year…';briefLabel.appendChild(brief);
-    fields.append(yearLabel,briefLabel);box.appendChild(fields);
-    const caption=document.createElement('p');caption.className='muted';caption.textContent='Actual annual ETF total returns, percentages (negative values allowed). These are secret until the reveal.';box.appendChild(caption);
-    const inputs=document.createElement('div');inputs.className='return-inputs';
-    SECTORS.forEach(s=>{const label=document.createElement('label');label.textContent=`${s.name} (${s.ticker})`;
-      const el=document.createElement('input');el.type='number';el.step='0.0001';el.min='-100';el.max='1000';el.id=`ret${n}_${s.key}`;el.placeholder='e.g. 12.34';label.appendChild(el);inputs.appendChild(label);});
-    box.appendChild(inputs);$('roundEditors').appendChild(box);
+// Imported instructor-only historical data stays in browser memory until the admin
+// explicitly saves it to the protected privateRounds collection in Firestore.
+// NEVER publish instructor_markets.json to GitHub Pages.
+let privateMarkets = null;
+
+function validateImportedMarket(market, index) {
+  if (!market || typeof market !== 'object' || Array.isArray(market)) {
+    throw new Error(`Market ${index}: expected a JSON object.`);
+  }
+  const year = market.year;
+  const briefing = typeof market.briefing === 'string' ? market.briefing.trim() : '';
+  if (!Number.isInteger(year) || year < 1998 || year > 2025) {
+    throw new Error(`Market ${index}: invalid historical calendar year.`);
+  }
+  if (briefing.length < 90) {
+    throw new Error(`Market ${index}: the anonymized briefing must contain at least 90 characters.`);
+  }
+  if (!market.returns || typeof market.returns !== 'object' || Array.isArray(market.returns)) {
+    throw new Error(`Market ${index}: sector returns are missing.`);
+  }
+  const returns = {};
+  for (const s of SECTORS) {
+    const r = market.returns[s.key];
+    if (typeof r !== 'number' || !Number.isFinite(r) || r < -100 || r > 1000) {
+      throw new Error(`Market ${index}: invalid total return for ${s.name}.`);
+    }
+    returns[s.key] = r;
+  }
+  // Only these validated fields are written to Firestore. Ignore metadata in JSON.
+  return { year, briefing, returns };
+}
+
+async function loadPrivateFile(file) {
+  privateMarkets = null;
+  $('initBtn').disabled = true;
+  if (!file) {
+    showMessage($('privateJsonStatus'), 'Choose the private instructor JSON file saved on your computer.');
+    return;
+  }
+  try {
+    if (file.size > 200000) throw new Error('File is unexpectedly large; choose the instructor market data JSON (under 200 KB).');
+    const parsed = JSON.parse(await file.text());
+    if (!parsed || !Array.isArray(parsed.rounds) || parsed.rounds.length !== 2) {
+      throw new Error('The JSON must have a "rounds" array containing exactly two markets.');
+    }
+    const rounds = parsed.rounds.map((item, i) => validateImportedMarket(item, i + 1));
+    if (rounds[0].year === rounds[1].year) throw new Error('Choose two different historical years.');
+    privateMarkets = rounds;
+    $('initBtn').disabled = false;
+    showMessage($('privateJsonStatus'), 'Private file validated: Market A and Market B are ready. No years or returns have been revealed to students.');
+  } catch (e) {
+    showMessage($('privateJsonStatus'), errorMessage(e), true);
   }
 }
-function readRound(n){
-  const year=Number($(`year${n}`).value);const briefing=$(`brief${n}`).value.trim();const returns={};
-  if(!Number.isInteger(year)||year<1998||year>2025)throw new Error(`Market ${n}: enter an actual historical calendar year.`);
-  if(briefing.length<90)throw new Error(`Market ${n}: add an informative student-facing briefing (at least 90 characters).`);
-  for(const s of SECTORS){
-    const raw=$(`ret${n}_${s.key}`).value;
-    const r=Number(raw);
-    if(raw.trim()===''||!Number.isFinite(r)||r< -100||r>1000)throw new Error(`Market ${n}: enter a valid percent return for ${s.name}.`);
-    returns[s.key]=r;
-  }
-  return {year,briefing,returns};
-}
+
 function makeCode(){
   const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const values=crypto.getRandomValues(new Uint32Array(10));
@@ -60,8 +85,10 @@ async function loadCodes(){
 }
 async function initialize(){
   try{
-    const a=readRound(1),b=readRound(2);
-    if(a.year===b.year)throw new Error('Use two different historical years.');
+    if (!privateMarkets || privateMarkets.length !== 2) {
+      throw new Error('Import the private historical market JSON file before initializing.');
+    }
+    const [a,b] = privateMarkets;
     if(!confirm('Initialize or RESET the championship? This deletes existing round submissions and scores and generates NEW group join codes.'))return;
     $('initBtn').disabled=true;
     const batch=writeBatch(db);
@@ -177,11 +204,13 @@ $('replayFinaleBtn').addEventListener('click',async()=>{
   }catch(e){showMessage($('controlMessage'),errorMessage(e),true);}
 });
 attachFinaleControls();
-renderEditors();setInterval(updateButtons,1000);setInterval(()=>{if(game?.phase==='open')refreshSubmissions();},9000);
+$('privateJsonFile').addEventListener('change', event => loadPrivateFile(event.target.files?.[0]));
+$('initBtn').disabled = true;
+setInterval(updateButtons,1000);setInterval(()=>{if(game?.phase==='open')refreshSubmissions();},9000);
 if(!firebaseConfigured){$('setupWarning').classList.remove('hidden');showMessage($('loginMessage'),'Firebase configuration is missing.',true);}
 else onAuthStateChanged(auth,async user=>{
   unsubGame();unsubBoard();game=null;board=null;
-  if(!user){$('loginPanel').classList.remove('hidden');$('controls').classList.add('hidden');$('loginBtn').disabled=false;return;}
+  if(!user){privateMarkets=null;$('privateJsonFile').value='';$('initBtn').disabled=true;showMessage($('privateJsonStatus'),'Choose the instructor-only JSON file from your computer.');$('loginPanel').classList.remove('hidden');$('controls').classList.add('hidden');$('loginBtn').disabled=false;return;}
   try{const snap=await getDoc(doc(db,'admins',user.uid));
     if(!snap.exists()||snap.data().role!=='admin')throw new Error('This user is not registered as an instructor in admins/{uid}.');
     enterAdmin();

@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Blind Wall Street Challenge — Instructor</title><link rel="stylesheet" href="style.css"></head><body>
+<title>Blind Wall Street Challenge — Instructor</title><link rel="stylesheet" href="style.css"><style>.private-import-label{display:block;margin:15px 0 8px;color:var(--muted);font-size:13px;font-weight:650}#privateJsonFile{max-width:570px;cursor:pointer}#privateJsonStatus{margin:12px 0 18px}</style></head><body>
 <header class="topbar"><div class="brand"><span class="brandmark">W</span><span>WALL STREET <small>INSTRUCTOR CONTROL</small></span></div><a class="navlink" href="./">Student portal</a></header>
 <main class="container"><section class="hero"><p class="kicker">PRIVATE INSTRUCTOR CONTROLS</p><h1>Run the historical<br><em>investment championship.</em></h1>
 <p>Actual years and sector returns stay in admin-only Firestore documents until you reveal them.</p></section>
@@ -8,11 +8,14 @@
 <label>Password<input id="adminPassword" type="password" autocomplete="current-password"></label><button id="loginBtn" class="primary" disabled>Sign in</button></div><p id="loginMessage" class="message">Sign in with the Email/Password account registered in Firebase.</p></section>
 <section id="controls" class="hidden">
  <div class="statline"><div><span class="overline">GAME STATUS</span><strong id="phaseText">—</strong></div><div><span class="overline">MARKET</span><strong id="roundText">—</strong></div><div><span class="overline">TIME LEFT</span><strong class="clock" id="adminClock">—</strong></div><div><span class="overline">TEAMS</span><strong>3</strong></div></div>
- <section class="panel" id="setupPanel"><div class="panel-head"><h2>Initialize two hidden historical markets</h2><span class="tag">ADMIN ONLY</span></div>
- <p class="notice">Do not put real years, future events, returns, group codes, or answer keys into public GitHub files. Enter them here instead. These values are stored in admin-only Firestore documents.</p>
- <div id="roundEditors"></div>
- <button id="initBtn" class="primary">Initialize / reset game and generate new codes</button>
- <p id="initMessage" class="message">Initialization replaces the game and deletes existing submissions and scores. Do it before the class begins.</p></section>
+ <section class="panel" id="setupPanel"><div class="panel-head"><h2>Game setup — import private historical markets</h2><span class="tag">ADMIN ONLY</span></div>
+  <p class="notice">Like the Commercial Bank Challenge: keep the private instructor JSON on your own computer. Do <strong>not</strong> upload it into public GitHub repository files. Import it here after signing in; the instructor account saves the two years, briefings, and annual returns to protected Firestore documents.</p>
+  <label class="private-import-label" for="privateJsonFile">Private instructor markets JSON (.json)</label>
+  <input id="privateJsonFile" type="file" accept=".json,application/json" aria-describedby="privateJsonStatus">
+  <p id="privateJsonStatus" class="message" role="status">Choose the instructor-only JSON file from your computer.</p>
+  <button id="initBtn" class="primary" disabled>Initialize / reset game and generate new codes</button>
+  <p id="initMessage" class="message">Once imported, initialize to create the three group codes. Reset erases previous submissions and scores.</p>
+ </section>
  <section class="panel"><div class="panel-head"><h2>Group join codes</h2><span class="subtle">Show each code only to its own captain</span></div><div id="codes" class="codes">Initialize the game to generate private group codes.</div></section>
  <section class="panel"><div class="panel-head"><h2>Round controls</h2><span class="subtle">Exactly 10 minutes per investment round</span></div>
   <div class="control-row"><button class="primary" id="open1Btn">Open Market A (10 min)</button><button class="primary" id="reveal1Btn">Reveal Market A results</button>
